@@ -1,0 +1,92 @@
+#run ROHan on individual BAM files #replace PCID with individual ID 
+#here we are using 50kb windows and allowing 0.0005 heterozygous sites per ROH
+/ROHan/src/rohan  --rohmu  5e-4  --tstv  2.016  --size  50000  -o  /output/PCID_rohan  reference.fasta  PCID_NoDups.sortedRG.bam
+
+## ROHan post processing ##
+
+#total number ROH for each individual 
+zcat PCID_rohan.mid.hmmrohl.gz | wc -l 
+
+
+#### ROH size bins ######
+#short ROH = <100kb
+# 100 000
+#long ROH = >1MB
+# 1 000 000
+#medium ROH: 100k to 1Mb
+# 100 000 to 1 000 000
+
+#short
+zcat PCID_rohan.mid.hmmrohl.gz | awk '$6<100000' > shortROH_PCID_validated.list
+
+#long
+zcat PCID_rohan.mid.hmmrohl.gz | awk '$6>1000000' > longROH_PCID_validated.list
+
+#medium - shorter than 1Mb
+zcat PCID_rohan.mid.hmmrohl.gz | awk '$6<1000000' > midROH_PCID_validated_step1.list
+#medium - longer than 100kb
+awk '$6>100000' midROH_PCID_validated_step1.list > midROH_PCID_validated.list
+#remove temporary files
+rm *_step1.list
+
+#then pull # of ROH:
+wc -l shortROH* > short_ROH_counts
+wc -l longROH* > long_ROH_counts
+wc -l midROH* > long_ROH_counts
+
+# calculate the sum of ROH >1Mb
+cat longROH* | awk '{ total += $6} END {print total}' > sum_ROH_list
+
+#figure out shortest ROH called for each
+sort -k 6 shortROH_PCID_validated.list > shortROH_PCID.sorted
+
+#curious about the longest ROH?
+sort -k 6 longROH_PCID_validated.list > longROH_PCID.sorted
+
+
+#### Shared ROH #####
+
+#make list of ROH longer than 2Mb for shared ROH analysis:
+zcat PCID_rohan.mid.hmmrohl.gz | awk '$6>2000000' > 2MbROH_PCID_validated.list
+
+#make files into bed files
+awk -F '\t' '{print $2, $3, $4}' OFS='\t' 2MbROH_PCID_validated.list > 2MbROH_PCID.bed
+
+#check how many >2Mb ROH overlap 
+bedtools intersect -wo -a 2MbROH_PCID1.bed -b 2MbROH_PCID2.bed > 2Mb_PCID1_PCID2.txt
+#exclude rows where the amount of overlap is <1Mb
+awk '$7>1000000' PCID1_PCID2_2Mb.txt > PCID1_PCID2_2Mb_filter.txt
+
+
+#### Identify peaks of heterozygosity ###
+#first identify statistical threshold in R #calculate 98% quartile for each individual 
+
+R
+data_PCID <- read.delim("./PCID_rohan.hEst", header=TRUE)
+het_PCID = data_PCID$h     
+peak_PCID <- quantile(het_PCID, c(.98), na.rm=TRUE) 
+q()
+
+#We identified the 98% quartile to range from 0.023-0.037 --> here using 0.023 as the cut off:
+
+#in linux, filter rohan heterozygosity estimates (.hEst) to only have sites >0.023
+awk '$5>0.023' PCID_rohan.hEst > PCID_hetpeaks
+
+#remove NAs
+sed -i '/NA/d' ./PCID_hetpeaks
+#remove beginning of scaffolds
+awk '$2 == "0" { next } { print }' "PCID_hetpeaks" > "PCID_hetpeaks_step1"
+
+#remove ends of scaffolds by removing any row where the #of validates sites is <30kb indicating segment was smaller than 50kb window 
+#inspect output to ensure this threshold is appropriate 
+awk '$4>30000' PCID_hetpeaks_step1 > PCID_hetpeaks
+#remove temporary files
+rm PCID_hetpeaks_step1
+
+#check if peaks are in the top 40 scaffolds
+awk 'NR==FNR { n[$1]=$0;next } ($1 in n) { print n[$1],$2 }' PCID_hetpeaks 40largest.txt 
+
+#make list of scaffolds of interest in bed format (island_scaffolds.bed)
+#then extract regions of interest to BLAST search
+bedtools getfasta -fi reference.fasta -bed island_scaffolds.bed -fo island_scaffolds.fasta
+
