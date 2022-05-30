@@ -1,0 +1,46 @@
+# First in Linux, subset out scaffolds of interest #replace ScaffoldX and ID# with Scaffold name and individual ID
+awk '$1=="ScaffoldX"' ./rohan_ID#.hEst > rohan_ID#_ScaffoldX.txt
+#repeat with other individuals and for other scaffolds of interest
+
+#then make figures in R
+R
+#load ROH files from mid estimates
+ROH_PCID <- read.delim("./PCID_rohan.mid.hmmrohl", header=TRUE)
+#repeat with other individuals 
+
+#load heterozygosity files for scaffold of interest
+ScaffoldX_PCID <- read.delim("./PCID_rohan_ScaffoldX.txt", header=FALSE)
+#add ID and population columns  #replace with info for each individual
+ScaffoldX_PCID <- cbind(ScaffoldX_PCID, ID = "CODE_PCID", Population="Population, Location")
+#repeat with other individuals
+
+#make dataframe #replace Scaffold X with the scaffold of interest #replace PCID with individual IDs for 3 individuals
+ScaffoldX_df <- rbind(ScaffoldX_PCID1, ScaffoldX_PCID2, ScaffoldX_PCID3)
+
+#load ggplot to make figures
+library(ggplot2)
+
+#plot heterozygosity estimates
+#column 3 is location on scaffold where the window ends #column 5 is the het estimates #colmumns 7 and 8 are the lower and upper het estimates respectively#
+ScaffoldX_all <- ggplot() +
+theme_bw() +
+  geom_errorbar(data=ScaffoldX_df, mapping=aes(x=V3, ymin=V7, ymax=V8), width=0.1, size=0.5, colour="grey") +
+  geom_point(data=ScaffoldX_df, size=0.5, aes(x=V3, y=V5, color=Population)) +
+  labs(y="Heterozygosity", x="Scaffold X") +
+  ylim(0, 0.05)
+
+# pull ROH segments from file 
+df_PCID <- ROH_PCID[,c("CHROM", "BEGIN", "END")]
+#replace ScaffoldX with name of scaffold of interest
+df_PCID_ScaffoldX <- subset(df_PCID, CHROM=="ScaffoldX")
+
+#add ROH segments ontop of heterozygosity plot
+#y placement is arbirtarty - I make it match the order of the legend #
+##ROH segements are plotted as semi-transparent wide segements to visually distinguish from heterozygosity point estimates - these data could be visualized differently - that's your call! ##
+ScaffoldX_ROH_plot <- ScaffoldX_all +
+	geom_segment(aes(x=df_PCID_ScaffoldX$BEGIN, y=0.0395, xend=df_21350_Sc3284$END, yend=0.0395), color="#4A2320", alpha=0.45, size=2) 
+#repeat for each individual
+
+#note you should check to ensure none of the dataframes are empty or you will get an error
+#if a dataframe is empty, comment it out with # or remove it from your code 
+
