@@ -1,0 +1,45 @@
+## Part 1: Make combined + genotyped VCF in GATK from individual BAMS
+
+java -jar $EBROOTGATK/GenomeAnalysisTK.jar -T HaplotypeCaller -R reference.fasta -I PCID_NoDupsRG.bam -o PCID_NoDupsRG.vcf.gz -ERC GVCF
+
+#combine VCFs
+java -jar $EBROOTGATK/GenomeAnalysisTK.jar -T CombineGVCFs -R reference.fasta --variant PCID1_NoDupsRG.vcf.gz --variant PCID2_NoDupsRG.vcf.gz --variant PCID3_NoDupsRG.vcf.gz --variant PCID4_NoDupsRG.vcf.gz --variant PCID5_NoDupsRG.vcf.gz --variant  --variant PCID6_NoDupsRG.vcf.gz --variant PCID7_NoDupsRG.vcf.gz --variant PCID8_NoDupsRG.vcf.gz --variant PCID9_NoDupsRG.vcf.gz --variant PCID10_NoDupsRG.vcf.gz --variant PCID11_NoDupsRG.vcf.gz --variant PCID12_NoDupsRG.vcf.gz --variant PCID13_NoDupsRG.vcf.gz --variant PCID14_NoDupsRG.vcf.gz --variant PCID15_NoDupsRG.vcf.gz -o Name_combined.vcf.gz
+
+#perform joint genotyping with HaplotypeCaller
+
+java -jar $EBROOTGATK/GenomeAnalysisTK.jar -T GenotypeGVCFs -R reference.fasta -V Name_combined.vcf.gz -o Name_combined_gt.vcf.gz
+
+## Part 2: filter VCF and calculate summary stats with VCFtools
+#filter with VCFtools
+#remove indels
+vcftools --vcf Name_combined_gt.vcf --remove-indels --recode --recode-INFO-all --out Name_combined_gt_filter1
+
+#remove sites with too low or too high depth ##here we are specifying depth >5 and <65 based on high coverage genomes (30x)
+vcftools --vcf Name_combined_gt_filter1.recode.vcf  --min-meanDP 5 --max-meanDP 65 --recode --recode-INFO-all --out Name_combined_gt_filter2
+
+#remove sites with low-quality genotype calls (GQ <20)
+vcftools --vcf Name_combined_gt_filter2.recode.vcf --minGQ 20 --recode --recode-INFO-all --out Name_combined_gt_filter3
+
+#remove sites with >10% missing data 
+vcftools --vcf Name_combined_gt_filter3.recode.vcf --max-missing 0.1 --removed-sites --recode --recode-INFO-all --out Name_combined_gt_final
+
+#delete temporary VCF files from filtering steps
+rm Name_combined_gt_filter*
+
+#calculate summary stats with VCFtools
+#tstv
+vcftools --vcf Name_combined_gt_final.recode.vcf --TsTv-summary --out Name_TSTV
+
+#inbreeding/het/F
+vcftools --vcf Name_combined_gt_final.recode.vcf --het --out Name_inbreeding
+
+#relatedness - kinship inference (KING)
+vcftools --vcf Name_combined_gt_final.recode.vcf --relatedness2 --out Name_related
+
+## Part 3: convert VCF to PLINK bfile format and then call ROH
+#make PLINK input from VCF #can also add --make-bed option to this line ##see https://www.cog-genomics.org/plink/1.9/input for more info/options##
+#note to convert the file we use plink2
+plink2 --vcf Name_combined_gt_final.recode.vcf --allow-extra-chr --max-alleles 2 --allow-no-sex --out Name_PLINK
+
+#call ROH with PLINKv1
+plink --bfile Name_PLINK --homozyg --allow-extra-chr --homozyg-snp 30 --homozyg-kb 100 --homozyg-density 50 --homozyg-gap 1000 --homozyg-window-snp 30 --homozyg-window-het 5 --homozyg-window-missing 5 --homozyg-window-threshold 0.05 --out Name_ROH
