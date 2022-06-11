@@ -1,3 +1,5 @@
 # Runs-of-Homozygosity
-Identify ROH with ROHan and process the results.
-Results are summarized and filtered using Linux and then plotted in R
+Genome processing from raw reads through to BAM
+From BAM: Identify ROH with ROHan and process the results
+Filter and summarize ROHan outputs using Linux and then plot in R
+Convert BAM to VCF, combine + genotype VCF, filter VCF, calculate summary stats, convert VCF to PLINK, call ROH in PLINK 
