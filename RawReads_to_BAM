@@ -1,0 +1,49 @@
+## raw reads to BAM ##
+
+#move raw reads and reference fasta into a directory
+#replace "PCID" with individual IDs
+#replace reference.fasta with reference file name
+
+#copy out RG info from file header of raw reads
+zcat filePCID_R1.fastq.gz | head
+
+#trim reads
+./trim_galore -q 30 --Illumina -o ./Trimmed --gzip --paired ./PCID_R1.fastq.gz ./PCID_R2.fastq.gz
+
+#build an index for the genome using Bowtie2
+module load bowtie2/2.3.0
+bowtie2-build reference.fasta
+
+#align to masked reference genome with bowtie2
+bowtie2 --local -p 16 -x reference.fasta \
+-q -1 ./PCID_R1Trimmed.fq.gz -2 ./PCID_R2Trimmed.fq.gz  -S PCIDMapped.sam 
+
+#Convert the .sam file to a .bam file using samtools
+samtools view -bS PCIDMapped.sam > PCIDMapped.bam 
+
+#sort BAM with samtools
+samtools sort PCIDMapped.bam -o PCID_Sorted.bam
+
+#Add RG info to BAM with Picard #fill in the info for RGLB and RGSM
+java -jar ./picard.jar AddOrReplaceReadGroups I=PCID_Sorted.bam O=PCID_SortedRG.bam RGLB=### RGPL=illumina RGPU=none RGSM=##### 
+
+#remove duplciates with Picard
+java -Xmx32g -Djava.io.tmpdir=`pwd`/tmp -jar ./picard.jar MarkDuplicates I=PCID_SortedRG.bam REMOVE_DUPLICATES=true O=PCID_NoDupsRG.bam M=marked_dup_metricsPCID.txt
+
+#index BAM with samtools
+samtools index -b PCID_NoDupsRG.bam
+
+#check quality of BAMs with FastQC
+fastqc PCID_NoDupsRG.bam
+
+#calculate depth of coverage ##Note some programs (e.g. ROHan) also produce depth estimates so this step could be done later instead/as well depending on downstream analysis plans
+samtools depth -a PCID_NoDupsRG.bam > PCID.coverage
+awk '{sum += $3} END {print "Average = ", sum/NR}' PCID.coverage > PCID.Average 
+rm PCID.coverage
+
+#Check alignment stats with samtools flagstat to ensure only primary alignments
+samtools flagstat PCID_NoDupsRG.bam
+
+#If there are secondary/supplementary/duplicate alignments, filter to only retain primary alignments
+samtools view -F 256 PCID_NoDupsRG.bam > PCID_NoDupsRG_1align.bam
+
