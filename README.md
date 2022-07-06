@@ -1,4 +1,4 @@
-# Runs-of-Homozygosity
+# Runs_of_Homozygosity
 Genome processing from raw reads through to BAM.
 
 From BAM: Identify ROH with ROHan and process the results.
