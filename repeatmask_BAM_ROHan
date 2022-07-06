@@ -1,0 +1,24 @@
+##follow same pipeline from raw reads to BAM but use the repeat masked version of the reference genome for alignment
+#Once you have the final BAM file, we can subset them for scaffolds of interest
+#first make a bed file with the scaffolds of interest
+#we want the entire scaffold so the second column should be "1" and the third column should be the scaffold length
+#example for Sc164:
+Sc247Nf_164 1 24146599
+
+#create new bams (and index) with scaffolds of interest
+samtools view -b -L Scaffoldlist.bed PCID_repeatmask_NoDupsRG.bam > PCIDrepeatmask_peaksSc.bam 
+samtools index PCIDrepeatmask_peaksSc.bam 
+
+#make new fasta (and index) for only the scaffolds of interest
+bedtools getfasta -fi caribou_21Dec2016_247Nf_masked.fasta -bed Scaffoldlist.bed -fo Sc_masked.fasta 
+samtools faidx Sc_masked.fasta 
+
+#the headers in the new fasta have the bed location rather than just the scaffold name
+#rename the headers in the new fasta so they match the BAM headers (just scaffold name)
+#example for Sc164
+sed -i 's/Sc247Nf_164:1-24146599/Sc247Nf_164/g' Sc_masked.fasta
+
+#run ROHan on BAMs
+/rohan/src/rohan --rohmu 5e-4 --tstv 2.016 --size 50000 -o ./rohan_out/PCIDrepeatmask_ScpeaksROH ./Sc_masked.fasta ./PCIDrepeatmask_peaksSc.bam
+
+#after ROHan finishes you can use the Rscript provided in this repository to plot the results across the scaffolds of interest
